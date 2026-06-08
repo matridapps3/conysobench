@@ -2195,7 +2195,17 @@ def materialize_rows(payload: dict):
     sub = ROWS_DIR / str(uuid.uuid4())
     sub.mkdir(parents=True, exist_ok=True)
     out_path = sub / "rows.parquet"
-    df.to_parquet(out_path, index=False)
+    try:
+        df.to_parquet(out_path, index=False)
+    except Exception:
+        # A column that mixes numbers and text — e.g. a stray "N/A" or a
+        # formula-error cell in an otherwise-numeric Excel column — makes pyarrow
+        # unable to infer a type and would otherwise 500 on the user's first
+        # upload. Coerce object columns to text so the upload still succeeds.
+        for _col in df.columns:
+            if df[_col].dtype == object:
+                df[_col] = df[_col].astype(str)
+        df.to_parquet(out_path, index=False)
     schema = []
     for col in df.columns:
         t = df[col].dtype.name
